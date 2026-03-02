@@ -1,4 +1,4 @@
-name: Classroom 
+name: Classroom Attendance
 
 on:
   workflow_dispatch:
@@ -14,16 +14,40 @@ jobs:
   mark-attendance:
     runs-on: ubuntu-latest
 
+    # 🔒 Prevent parallel runs from same user
+    concurrency:
+      group: attendance-${{ github.actor }}
+      cancel-in-progress: false
+
     steps:
-      # Validate Name Format (Firstname Lastname)
+      # 🚫 Stop if this user already has a successful run today
+      - name: Check If Already Marked
+        run: |
+          echo "Checking previous runs..."
+
+          RUN_COUNT=$(gh run list \
+            --workflow="${{ github.workflow }}" \
+            --actor="${{ github.actor }}" \
+            --status=success \
+            --json createdAt \
+            --jq '. | length')
+
+          if [ "$RUN_COUNT" -ge 1 ]; then
+            echo "Attendance already marked. Re-run not allowed."
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Validate Name Format
       - name: Validate Full Name
         run: |
           if [[ ! "${{ github.event.inputs.full_name }}" =~ ^[A-Za-z]+\ [A-Za-z]+$ ]]; then
-            echo "Invalid name format. Use: Firstname Lastname"
+            echo "Invalid name format."
             exit 1
           fi
 
-      # Generate Attendance Receipt
+      # Generate Receipt
       - name: Generate Attendance Receipt
         run: |
           echo "Attendance Confirmation" > attendance.txt
@@ -37,7 +61,7 @@ jobs:
       - name: Upload Attendance Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: attendance-${{ github.actor }}-$(date -u +%Y-%m-%d-%H-%M-%S)
+          name: attendance-${{ github.actor }}
           path: attendance.txt
           retention-days: 30
 
