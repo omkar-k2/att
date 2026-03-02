@@ -1,4 +1,4 @@
-name: Secure Classroom Attendance
+name: Classroom 
 
 on:
   workflow_dispatch:
@@ -6,8 +6,8 @@ on:
       full_name:
         description: "Enter your Full Name (Example: Rohit Sharma)"
         required: true
-      lecture_code:
-        description: "Enter Today's Lecture Code (Provided in Class)"
+      lecture_topic:
+        description: "Enter Today's Lecture Topic"
         required: true
 
 jobs:
@@ -15,50 +15,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Validate 60-Second Time Window (Adjust UTC Time)
-      - name: Validate Time Window
-        run: |
-          START_TIME="04:30:00"   # Example: 10:00 AM IST = 04:30 UTC
-          END_TIME="04:31:00"     # 1 minute window
-
-          NOW=$(date -u +%H:%M:%S)
-
-          if [[ "$NOW" < "$START_TIME" || "$NOW" > "$END_TIME" ]]; then
-            echo "Attendance window closed!"
-            exit 1
-          fi
-
-      # 2️⃣ Validate Lecture Code (Change Daily)
-      - name: Validate Lecture Code
-        run: |
-          if [ "${{ github.event.inputs.lecture_code }}" != "DOCKER27" ]; then
-            echo "Invalid Lecture Code!"
-            exit 1
-          fi
-
-      # 3️⃣ Validate Name Format
-      - name: Validate Full Name Format
+      # Validate Name Format (Firstname Lastname)
+      - name: Validate Full Name
         run: |
           if [[ ! "${{ github.event.inputs.full_name }}" =~ ^[A-Za-z]+\ [A-Za-z]+$ ]]; then
             echo "Invalid name format. Use: Firstname Lastname"
             exit 1
           fi
 
-      # 4️⃣ Generate Attendance Receipt
+      # Generate Attendance Receipt
       - name: Generate Attendance Receipt
         run: |
           echo "Attendance Confirmation" > attendance.txt
           echo "-----------------------" >> attendance.txt
           echo "Name: ${{ github.event.inputs.full_name }}" >> attendance.txt
-          echo "GitHub User: ${{ github.actor }}" >> attendance.txt
-          echo "Lecture Code: ${{ github.event.inputs.lecture_code }}" >> attendance.txt
+          echo "Lecture Topic: ${{ github.event.inputs.lecture_topic }}" >> attendance.txt
+          echo "GitHub Username: ${{ github.actor }}" >> attendance.txt
           echo "Timestamp (UTC): $(date -u)" >> attendance.txt
 
-      # 5️⃣ Upload Artifact
+      # Upload Artifact
       - name: Upload Attendance Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: attendance-${{ github.actor }}-$(date -u +%Y-%m-%d)
+          name: attendance-${{ github.actor }}-$(date -u +%Y-%m-%d-%H-%M-%S)
           path: attendance.txt
           retention-days: 30
 
