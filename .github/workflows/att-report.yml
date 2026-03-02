@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Install GitHub CLI & jq
         run: |
           sudo apt update
@@ -39,6 +42,7 @@ jobs:
           mkdir attendance_data
 
           gh run list \
+            --repo ${{ github.repository }} \
             --workflow="Attendance" \
             --status=success \
             --limit 200 \
@@ -50,7 +54,9 @@ jobs:
 
           for id in $run_ids
           do
-            gh run download $id -D attendance_data || true
+            gh run download $id \
+              --repo ${{ github.repository }} \
+              -D attendance_data || true
           done
 
       - name: Display Attendance in Logs
