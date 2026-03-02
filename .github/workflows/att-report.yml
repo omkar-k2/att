@@ -1,0 +1,79 @@
+name: Show Attendance (Log View)
+
+on:
+  workflow_dispatch:
+    inputs:
+      lecture_date:
+        description: "Enter Lecture Date (DD MM YYYY)"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  show-attendance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install GitHub CLI & jq
+        run: |
+          sudo apt update
+          sudo apt install gh jq -y
+
+      - name: Authenticate GitHub CLI
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: Convert Date Format
+        run: |
+          input="${{ github.event.inputs.lecture_date }}"
+          day=$(echo $input | awk '{print $1}')
+          month=$(echo $input | awk '{print $2}')
+          year=$(echo $input | awk '{print $3}')
+          formatted="$year-$month-$day"
+          echo "FORMATTED_DATE=$formatted" >> $GITHUB_ENV
+
+      - name: Fetch Attendance Runs
+        run: |
+          mkdir attendance_data
+
+          gh run list \
+            --workflow="Attendance" \
+            --status=success \
+            --limit 200 \
+            --json databaseId > runs.json
+
+      - name: Download Artifacts
+        run: |
+          run_ids=$(jq -r '.[].databaseId' runs.json)
+
+          for id in $run_ids
+          do
+            gh run download $id -D attendance_data || true
+          done
+
+      - name: Display Attendance in Logs
+        run: |
+          echo "======================================"
+          echo "Today's Attendance - $FORMATTED_DATE"
+          echo "======================================"
+
+          count=0
+
+          for file in attendance_data/**/*.txt
+          do
+            date=$(grep "Lecture Date:" "$file" | cut -d':' -f2 | xargs)
+
+            if [ "$date" == "$FORMATTED_DATE" ]; then
+              name=$(grep "Name:" "$file" | cut -d':' -f2 | xargs)
+              user=$(grep "GitHub Username:" "$file" | cut -d':' -f2 | xargs)
+              topic=$(grep "Lecture Topic:" "$file" | cut -d':' -f2 | xargs)
+
+              echo "$((++count)). $name | $user | $topic"
+            fi
+          done
+
+          echo "--------------------------------------"
+          echo "Total Students Present: $count"
+          echo "======================================"
