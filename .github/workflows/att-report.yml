@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       lecture_date:
-        description: "Enter Lecture Date (DD MM YYYY)"
+        description: "Enter Lecture Date (DDMMYYYY) Example: 27022026"
         required: true
         type: string
 
@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Required for gh CLI to know the repo
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -28,14 +29,24 @@ jobs:
       - name: Authenticate GitHub CLI
         run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
+      # Convert DDMMYYYY → YYYY-MM-DD
       - name: Convert Date Format
         run: |
-          input="${{ github.event.inputs.lecture_date }}"
-          day=$(echo $input | awk '{print $1}')
-          month=$(echo $input | awk '{print $2}')
-          year=$(echo $input | awk '{print $3}')
-          formatted="$year-$month-$day"
-          echo "FORMATTED_DATE=$formatted" >> $GITHUB_ENV
+          INPUT="${{ github.event.inputs.lecture_date }}"
+
+          if [[ ! "$INPUT" =~ ^[0-9]{8}$ ]]; then
+            echo "Invalid format. Use DDMMYYYY (Example: 27022026)"
+            exit 1
+          fi
+
+          DAY=${INPUT:0:2}
+          MONTH=${INPUT:2:2}
+          YEAR=${INPUT:4:4}
+
+          FORMATTED_DATE="$YEAR-$MONTH-$DAY"
+          echo "FORMATTED_DATE=$FORMATTED_DATE" >> $GITHUB_ENV
+
+          echo "Converted Date: $FORMATTED_DATE"
 
       - name: Fetch Attendance Runs
         run: |
@@ -43,12 +54,12 @@ jobs:
 
           gh run list \
             --repo ${{ github.repository }} \
-            --workflow="Attendance" \
+            --workflow="att.yml" \
             --status=success \
             --limit 200 \
             --json databaseId > runs.json
 
-      - name: Download Artifacts
+      - name: Download Attendance Artifacts
         run: |
           run_ids=$(jq -r '.[].databaseId' runs.json)
 
@@ -62,13 +73,15 @@ jobs:
       - name: Display Attendance in Logs
         run: |
           echo "======================================"
-          echo "Today's Attendance - $FORMATTED_DATE"
+          echo "Attendance for $FORMATTED_DATE"
           echo "======================================"
 
           count=0
 
           for file in attendance_data/**/*.txt
           do
+            [ -f "$file" ] || continue
+
             date=$(grep "Lecture Date:" "$file" | cut -d':' -f2 | xargs)
 
             if [ "$date" == "$FORMATTED_DATE" ]; then
