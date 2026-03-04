@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Required for gh CLI to know the repo
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -35,7 +34,7 @@ jobs:
           INPUT="${{ github.event.inputs.lecture_date }}"
 
           if [[ ! "$INPUT" =~ ^[0-9]{8}$ ]]; then
-            echo "Invalid format. Use DDMMYYYY (Example: 27022026)"
+            echo "Invalid format. Use DDMMYYYY"
             exit 1
           fi
 
@@ -45,32 +44,18 @@ jobs:
 
           FORMATTED_DATE="$YEAR-$MONTH-$DAY"
           echo "FORMATTED_DATE=$FORMATTED_DATE" >> $GITHUB_ENV
-
           echo "Converted Date: $FORMATTED_DATE"
 
-      - name: Fetch Attendance Runs
+      - name: Fetch Successful Attendance Runs
         run: |
-          mkdir attendance_data
-
           gh run list \
             --repo ${{ github.repository }} \
-            --workflow="att.yml" \
+            --workflow="Classroom Attendance" \
             --status=success \
-            --limit 200 \
-            --json databaseId > runs.json
+            --json databaseId,createdAt \
+            --limit 200 > runs.json
 
-      - name: Download Attendance Artifacts
-        run: |
-          run_ids=$(jq -r '.[].databaseId' runs.json)
-
-          for id in $run_ids
-          do
-            gh run download $id \
-              --repo ${{ github.repository }} \
-              -D attendance_data || true
-          done
-
-      - name: Display Attendance in Logs
+      - name: Download and Display Attendance
         run: |
           echo "======================================"
           echo "Attendance for $FORMATTED_DATE"
@@ -78,18 +63,27 @@ jobs:
 
           count=0
 
-          for file in attendance_data/**/*.txt
-          do
-            [ -f "$file" ] || continue
+          for row in $(jq -c '.[]' runs.json); do
+            run_id=$(echo "$row" | jq -r '.databaseId')
+            created=$(echo "$row" | jq -r '.createdAt' | cut -d'T' -f1)
 
-            date=$(grep "Lecture Date:" "$file" | cut -d':' -f2 | xargs)
+            if [ "$created" == "$FORMATTED_DATE" ]; then
+              
+              mkdir -p run_$run_id
 
-            if [ "$date" == "$FORMATTED_DATE" ]; then
-              name=$(grep "Name:" "$file" | cut -d':' -f2 | xargs)
-              user=$(grep "GitHub Username:" "$file" | cut -d':' -f2 | xargs)
-              topic=$(grep "Lecture Topic:" "$file" | cut -d':' -f2 | xargs)
+              gh run download $run_id \
+                --repo ${{ github.repository }} \
+                -D run_$run_id >/dev/null 2>&1 || continue
 
-              echo "$((++count)). $name | $user | $topic"
+              file=$(find run_$run_id -name "attendance.txt" | head -n 1)
+
+              if [ -f "$file" ]; then
+                name=$(grep "Name:" "$file" | cut -d':' -f2- | xargs)
+                user=$(grep "GitHub Username:" "$file" | cut -d':' -f2- | xargs)
+                topic=$(grep "Lecture Topic:" "$file" | cut -d':' -f2- | xargs)
+
+                echo "$((++count)). $name | $user | $topic"
+              fi
             fi
           done
 
