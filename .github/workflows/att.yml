@@ -14,40 +14,43 @@ jobs:
   mark-attendance:
     runs-on: ubuntu-latest
 
-    # 🔒 Prevent parallel runs from same user
+    # Prevent parallel runs from same user
     concurrency:
       group: attendance-${{ github.actor }}
       cancel-in-progress: false
 
     steps:
-      # 🚫 Stop if this user already has a successful run today
-      - name: Check If Already Marked
+      # ✅ Allow only once per day
+      - name: Check If Already Marked Today
         run: |
-          echo "Checking previous runs..."
+          echo "Checking today's attendance..."
+
+          TODAY=$(date -u +%Y-%m-%d)
 
           RUN_COUNT=$(gh run list \
-            --workflow="${{ github.workflow }}" \
-            --actor="${{ github.actor }}" \
+            --workflow="Classroom Attendance" \
+            --user="${{ github.actor }}" \
             --status=success \
             --json createdAt \
-            --jq '. | length')
+            --limit 50 \
+            --jq "[.[] | select(.createdAt | startswith(\"$TODAY\"))] | length")
 
           if [ "$RUN_COUNT" -ge 1 ]; then
-            echo "Attendance already marked. Re-run not allowed."
+            echo "Attendance already marked for today."
             exit 1
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Validate Name Format
+      # Validate Name Format (First + Last name only)
       - name: Validate Full Name
         run: |
           if [[ ! "${{ github.event.inputs.full_name }}" =~ ^[A-Za-z]+\ [A-Za-z]+$ ]]; then
-            echo "Invalid name format."
+            echo "Invalid name format. Use FirstName LastName"
             exit 1
           fi
 
-      # Generate Receipt
+      # Generate Attendance Receipt
       - name: Generate Attendance Receipt
         run: |
           echo "Attendance Confirmation" > attendance.txt
